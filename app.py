@@ -18,9 +18,14 @@ st.sidebar.title("⚙️ Tùy chỉnh Pipeline")
 model_path = st.sidebar.text_input("Đường dẫn Model YOLO", value="best.pt", help="Nhập file .pt của bạn (VD: best.pt, yolov8n-seg.pt)")
 
 # 2. Tùy chỉnh Thuật toán tìm góc
+methods = {
+    "ApproxPolyDP": "ApproxPolyDP",
+    "MinAreaRect (Not Recommended)": "MinAreaRect"
+}
+
 corner_method = st.sidebar.selectbox(
     "Thuật toán trích xuất góc", 
-    ["ApproxPolyDP", "MinAreaRect"],
+    list(methods.keys()),
     help="ApproxPolyDP bám sát đường viền mask. MinAreaRect tạo ra một khung chữ nhật bao ngoài vùng mask."
 )
 
@@ -28,7 +33,7 @@ corner_method = st.sidebar.selectbox(
 if corner_method == "ApproxPolyDP":
     epsilon_val = st.sidebar.slider(
         "Hệ số Epsilon", 
-        min_value=0.001, max_value=0.100, value=0.020, step=0.001,
+        min_value=0.001, max_value=0.100, value=0.050, step=0.001,
         help="Càng nhỏ thì đa giác càng nhiều cạnh, càng lớn thì đa giác càng ít cạnh (mục tiêu là tìm ra đúng 4 cạnh)."
     )
 else:

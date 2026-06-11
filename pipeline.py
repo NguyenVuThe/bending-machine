@@ -26,7 +26,7 @@ def order_points(pts):
     rect[3] = pts[np.argmax(diff)]
     return rect
 
-def extract_corners(mask, method="ApproxPolyDP", epsilon_factor=0.02):
+def extract_corners(mask, method="ApproxPolyDP", epsilon_factor=0.05):
     """
     Tìm 4 góc từ mask dựa trên thuật toán được chỉ định.
     """
