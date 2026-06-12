@@ -1,3 +1,5 @@
 __pycache__/
 .venv/
 yolov8n-seg.pt
+images/
+output/
