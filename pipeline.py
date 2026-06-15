@@ -31,7 +31,7 @@ def extract_corners(mask, method="ApproxPolyDP", epsilon_factor=0.05):
     Tìm 4 góc từ mask dựa trên thuật toán được chỉ định.
     """
     binary_mask = (mask * 255).astype(np.uint8)
-    contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     
     if not contours:
         return None
@@ -57,6 +57,21 @@ def extract_corners(mask, method="ApproxPolyDP", epsilon_factor=0.05):
         return order_points(pts)
 
     return None
+
+def extract_largest_contour(mask):
+    binary_mask = (mask * 255).astype(np.uint8)
+    contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    if not contours:
+        return None
+        
+    largest_contour = max(contours, key=cv2.contourArea)
+    area = cv2.contourArea(
+        largest_contour
+    )
+    print(area)
+    print(largest_contour.shape)
+    return largest_contour
 
 def apply_perspective(image_np, corners):
     """Căng phẳng ảnh dựa trên 4 điểm ảnh"""
