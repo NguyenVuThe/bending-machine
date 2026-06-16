@@ -14,28 +14,26 @@ from utils.io import save_rgb, save_mask, find_images
 from utils.math import nearest_idx, extract_corners, extract_largest_contour, resample_curve, extract_edge_safe
 from utils.visualize import draw_corners, draw_contours, draw_mesh, draw_edges, draw_resampled_edges
 
-os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
-
 MODEL_PATH = "best.pt"
 OUTPUT_DIR = "outputs"
 CORNER_METHOD = "ApproxPolyDP"
 EPSILON_FACTOR = 0.05
 
-def run_one_image(image_path, model, epsilon_factor=EPSILON_FACTOR):
-    
+def run_one_image(image_path, model, epsilon_factor=EPSILON_FACTOR, alpha_shading=30.0):
     image_path = Path(image_path)
+
     if not image_path.is_file():
         raise FileNotFoundError(f"Cannot find image: {image_path}")
 
     image = Image.open(image_path).convert("RGB")
     image_np = np.array(image)
 
-    # Segmentation
+    # Step 1: Segmentation
     mask, conf = run_segmentation(image_np, model)
     if mask is None:
         raise RuntimeError("Model cannot detect a mask on this image.")
 
-    # Corner extraction
+    # Step 2: Corner extraction
     corners = extract_corners(mask, method=CORNER_METHOD, epsilon_factor=epsilon_factor)
     print(f"Extracted corners: {corners}")
     if corners is None:
@@ -55,7 +53,8 @@ def run_one_image(image_path, model, epsilon_factor=EPSILON_FACTOR):
     idx_br = nearest_idx(boundary, BR)
     idx_bl = nearest_idx(boundary, BL)
 
-    # Edges
+
+    # Trích xuất 4 cạnh một cách an toàn bằng hàm trợ giúp mới
     top_edge = extract_edge_safe(boundary, idx_tl, idx_tr)
     bottom_edge = extract_edge_safe(boundary, idx_bl, idx_br)
     left_edge = extract_edge_safe(boundary, idx_tl, idx_bl)
@@ -70,7 +69,7 @@ def run_one_image(image_path, model, epsilon_factor=EPSILON_FACTOR):
     left = resample_curve(left_edge, rows)
     right = resample_curve(right_edge, rows)
 
-    # Mesh Coons Patch 
+    # Tạo Lưới Coons Patch (Source Mesh)
     mesh = []
     for c in range(cols):
         u = c / (cols - 1)
@@ -91,12 +90,57 @@ def run_one_image(image_path, model, epsilon_factor=EPSILON_FACTOR):
         mesh.append(column)
 
     mesh = np.array(mesh)  # Hình dạng (cols, rows, 2)
+    
+    # 1. Chuyển ảnh sang Grayscale
+    gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
+
+    # 2. Xóa chữ bằng Morphological Dilation
+    # Kích thước kernel phải lớn hơn độ dày nét chữ lớn nhất trong ảnh
+    kernel_size = 15 
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_size, kernel_size))
+    dilated = cv2.dilate(gray, kernel, iterations=1)
+
+    # 3. Làm mượt để tạo Shading Map (Illumination)
+    shading_map = cv2.GaussianBlur(dilated, (51, 51), sigmaX=15, sigmaY=15)
+    
+    # Chuẩn hóa về dải [0.0, 1.0] để tính toán
+    shading_norm = shading_map.astype(np.float32) / 255.0
+
+    # 4. Tính Gradient (đạo hàm bậc 1) theo trục X và Y bằng toán tử Sobel
+    # Gradient giúp xác định hướng của "nếp gấp" trên giấy
+    grad_x = cv2.Sobel(shading_norm, cv2.CV_32F, 1, 0, ksize=5)
+    grad_y = cv2.Sobel(shading_norm, cv2.CV_32F, 0, 1, ksize=5)
+
+    for c in range(1, cols - 1):
+        for r in range(1, rows - 1):
+            pt = mesh[c, r]
+            x, y = int(pt[0]), int(pt[1])
+            
+            # Đảm bảo tọa độ an toàn không vượt quá viền ảnh
+            x = np.clip(x, 0, image_np.shape[1] - 1)
+            y = np.clip(y, 0, image_np.shape[0] - 1)
+            
+            # Lấy vector gradient tại điểm ảnh này
+            dx = grad_x[y, x]
+            dy = grad_y[y, x]
+            
+            # Tính trọng số dựa trên độ tối (Shading Intensity)
+            # intensity = 1.0 (sáng/phẳng) -> weight = 0 -> Không dịch chuyển
+            # intensity = 0.0 (tối/sâu) -> weight = alpha -> Dịch chuyển tối đa
+            intensity = shading_norm[y, x]
+            weight = (1.0 - intensity) * alpha_shading
+            shift_x, shift_y = dx * weight, dy * weight
+            
+            # Cập nhật tọa độ điểm lưới
+            mesh[c, r, 0] += np.clip(shift_x, -10.0, 10.0)
+            mesh[c, r, 1] += np.clip(shift_y, -10.0, 10.0)
 
     image_mesh = draw_mesh(image_np, mesh)
 
     # Tính toán kích thước output động theo tỷ lệ thực tế
     W = int(max(np.linalg.norm(TR - TL), np.linalg.norm(BR - BL)))
     H = int(max(np.linalg.norm(BL - TL), np.linalg.norm(BR - TR)))
+    print(f"Dynamic Output Size: {W}x{H}")
 
     # Tạo Lưới phẳng (Target Mesh)
     target_mesh = []
@@ -204,7 +248,7 @@ def process_images(input_folder_path):
 
 if __name__ == "__main__":
     # Single image:
-    # main("images/0KU0NH_4_png_jpg.rf.b677abe04219a4536df3570380d429d5.jpg")
+    main("images/0141_jpg.rf.4a20e0357c228d9c352b1628867d9d52.jpg")
 
     # Folder of images:
-    process_images("images")
+    # process_images("images")
